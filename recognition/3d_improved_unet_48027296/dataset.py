@@ -8,6 +8,9 @@ import random
 import time
 
 class Prostate2DDataset(Dataset):
+    """
+    Dataloader for 2D datasets
+    """
     def __init__(self, image_dir, label_dir, img_size=256, random_flip=True):
         self.img_size = img_size
         self.random_flip = random_flip
@@ -64,3 +67,55 @@ class Prostate2DDataset(Dataset):
                 lbl = torch.flip(lbl, dims=[1])
 
         return img, lbl
+    
+class Prostate3DDataset(Dataset):
+    """ Dataloader for 3D prostate MRI valumes """
+    def __init__(self, image_paths, label_paths, transform=None):
+        self.image_paths = image_paths
+        self.label_paths = label_paths
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img = nib.load(self.image_paths[idx]).get_fdata()
+        lbl = nib.load(self.label_paths[idx]).get_fdata()
+
+        # Normalize image and threshold label
+        img = (img - np.mean(img)) / (np.std(img) + 1e-8)
+        lbl = (lbl > 0).astype(np.float32)
+
+        img = torch.tensor(img, dtype=torch.float32).unsqueeze(0)  # (1, D, H, W)
+        lbl = torch.tensor(lbl, dtype=torch.float32).unsqueeze(0)
+
+        if self.transform:
+            img, lbl = self.transform(img, lbl)
+
+        return img, lbl
+
+def get_data_splits(image_dir, label_dir, seed=42):
+    """ Splits data into train/val/test set """
+    random.seed(seed)
+    image_paths = sorted([os.path.join(image_dir, f) for f in os.listdir(image_dir) if f.endswith(('.nii', '.nii.gz'))])
+    label_paths = sorted([os.path.join(label_dir, f) for f in os.listdir(label_dir) if f.endswith(('.nii', '.nii.gz'))])
+
+    assert len(image_paths) == len(label_paths), "Mismatch between images and labels"
+    indices = list(range(len(image_paths)))
+    random.shuffle(indices)
+
+    n_total = len(indices)
+    n_train = int(0.7 * n_total)
+    n_val = int(0.15 * n_total)
+
+    train_idx = indices[:n_train]
+    val_idx = indices[n_train:n_train + n_val]
+    test_idx = indices[n_train + n_val:]
+
+    def subset(paths, idxs): return [paths[i] for i in idxs]
+
+    return (
+        subset(image_paths, train_idx), subset(label_paths, train_idx),
+        subset(image_paths, val_idx), subset(label_paths, val_idx),
+        subset(image_paths, test_idx), subset(label_paths, test_idx)
+    )

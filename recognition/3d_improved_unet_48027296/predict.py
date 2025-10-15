@@ -1,6 +1,6 @@
 import torch
-from modules import UNet2D
-from dataset import Prostate2DDataset
+from modules import UNet3D
+from dataset import Prostate3DDataset, get_data_splits
 import matplotlib.pyplot as plt
 from utils import dice_score
 import os
@@ -8,22 +8,27 @@ import os
 def predict():
     print("Starting predict.py...")
 
-    model = UNet2D().cuda()
-    model.load_state_dict(torch.load("unet2d.pth"))
+    # directories 
+    image_dir = "/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
+    label_dir = "/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only"
+
+    _, _, _, _, test_imgs, test_lbls = get_data_splits(image_dir, label_dir)
+    test_ds = Prostate3DDataset(test_imgs, test_lbls)
+    print(f"Loaded {len(test_ds)} test samples")
+
+    model = UNet3D().cuda()
+    model.load_state_dict(torch.load("unet3d.pth"))
     model.eval()
     print("Model loaded and set to eval mode")
 
-    ds = Prostate2DDataset("/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_test",
-                           "/home/groups/comp3710/HipMRI_Study_open/keras_slices_data/keras_slices_seg_test")
-    print(f"Loaded {len(ds)} test samples")
-
-    os.makedirs("predictions", exist_ok=True)
+    os.makedirs("predictions_3d", exist_ok=True)
 
     total_dice = 0.0
-    for i in range(len(ds)):
-        x, y = ds[i]
+
+    for i in range(len(test_ds)):
+        x, y = test_ds[i]
         with torch.no_grad():
-            pred = model(x.unsqueeze(0).cuda()).cpu().squeeze()
+            pred = model(x.unsqueeze(0).cuda()).cpu().squeeze(0)
 
         pred_bin = (pred > 0.5).float()
         dice = dice_score(pred_bin, y.cpu())
@@ -32,13 +37,25 @@ def predict():
 
         if i % 10 == 0:
             plt.figure(figsize=(12, 4))
-            plt.subplot(1, 3, 1); plt.imshow(x.squeeze().cpu(), cmap='gray'); plt.title("Input")
-            plt.subplot(1, 3, 2); plt.imshow(y.squeeze().cpu(), cmap='gray'); plt.title("Ground Truth")
-            plt.subplot(1, 3, 3); plt.imshow(pred_bin.squeeze(), cmap='gray'); plt.title("Prediction")
+
+            mid_slice = x.shape[-1] // 2  # middle slice index
+
+            plt.subplot(1, 3, 1)
+            plt.imshow(x[0, :, :, mid_slice].cpu(), cmap='gray')
+            plt.title("Input")
+
+            plt.subplot(1, 3, 2)
+            plt.imshow(y[0, :, :, mid_slice].cpu(), cmap='gray')
+            plt.title("Ground Truth")
+
+            plt.subplot(1, 3, 3)
+            plt.imshow(pred_bin[0, :, :, mid_slice].cpu(), cmap='gray')
+            plt.title("Prediction")
+
             plt.tight_layout()
-            plt.savefig(f"predictions/sample_{i:03d}.png")
+            plt.savefig(f"predictions_3d/sample_{i:03d}.png")
             plt.close()
-            print(f"Saved predictions/sample_{i:03d}.png", flush=True)
+            print(f"Saved predictions_3d/sample_{i:03d}.png", flush=True)
 
 if __name__ == "__main__":
     predict()
