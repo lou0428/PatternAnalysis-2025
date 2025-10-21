@@ -2,7 +2,7 @@ print("train.py script started")
 
 import torch
 from torch.utils.data import DataLoader
-from modules import UNet3D
+from modules import ImprovedUNet3D
 from dataset import Prostate3DDataset, get_data_splits
 from utils import dice_score, plot_metrics
 import torch.nn as nn
@@ -10,7 +10,7 @@ import torch.optim as optim
 import os
 
 def train_model():
-    model = UNet3D().cuda()
+    model = ImprovedUNet3D(in_channels=1, num_classes=1).cuda()
 
     # directories 
     image_dir = "/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
@@ -24,7 +24,7 @@ def train_model():
     train_loader = DataLoader(train_ds, batch_size=1, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=1)
 
-    criterion = nn.BCELoss()
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     train_loss, val_dice = [], []
@@ -52,12 +52,12 @@ def train_model():
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.cuda(), y.cuda()
-                pred = model(x)
+                pred = torch.sigmoid(model(x)) # convert logits to probabilities
                 dice_total += dice_score(pred, y)
         val_dice.append(dice_total / len(val_loader))
         print(f"Epoch {epoch+1}: Loss={train_loss[-1]:.4f}, Dice={val_dice[-1]:.4f}")
 
-    torch.save(model.state_dict(), "unet3d.pth")
+    torch.save(model.state_dict(), "improved_unet3d.pth")
     plot_metrics(train_loss, val_dice)
 
 if __name__ == "__main__":

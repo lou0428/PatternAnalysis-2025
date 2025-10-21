@@ -1,5 +1,5 @@
 import torch
-from modules import UNet3D
+from modules import Improved3DUNet
 from dataset import Prostate3DDataset, get_data_splits
 import matplotlib.pyplot as plt
 from utils import dice_score
@@ -16,7 +16,7 @@ def predict():
     test_ds = Prostate3DDataset(test_imgs, test_lbls)
     print(f"Loaded {len(test_ds)} test samples")
 
-    model = UNet3D().cuda()
+    model = Improved3DUNet(in_channels=1, num_classes=1).cuda()
     model.load_state_dict(torch.load("unet3d.pth"))
     model.eval()
     print("Model loaded and set to eval mode")
@@ -30,7 +30,7 @@ def predict():
         with torch.no_grad():
             pred = model(x.unsqueeze(0).cuda()).cpu().squeeze(0)
 
-        pred_bin = (pred > 0.5).float()
+        pred_bin = (torch.sigmoid(pred) > 0.5).float() # convert logits to probabilities
         dice = dice_score(pred_bin, y.cpu())
         total_dice += dice.item()
         print(f"Sample {i}: Dice = {dice:.4f}")

@@ -1,5 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+
+#### 2D UNet ####
 
 class UNet2D(nn.Module):
     """
@@ -64,6 +68,8 @@ class UNet2D(nn.Module):
 
         return torch.sigmoid(self.final(d1))
     
+
+#### 3D UNet ####
 
 class UNet3D(nn.Module):
     """ 
@@ -139,4 +145,159 @@ class UNet3D(nn.Module):
 
         # final segmentation map 
         return torch.sigmoid(self.final(dec1))
+    
+
+#### Improved 3D UNet ####
+
+class ContextModule(nn.Module):
+    """Pre-activation residual block with dropout"""
+    def __init__(self, in_channels, out_channels, dropout_p=0.3):
+        super().__init__()
+        self.norm1 = nn.InstanceNorm3d(in_channels)
+        self.lrelu1 = nn.LeakyReLU(0.01, inplace=True)
+        self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
+        
+        self.dropout = nn.Dropout3d(p=dropout_p)
+        
+        self.norm2 = nn.InstanceNorm3d(out_channels)
+        self.lrelu2 = nn.LeakyReLU(0.01, inplace=True)
+        self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3, padding=1)
+        
+        # Residual connection (1x1 conv if channels change)
+        self.residual = nn.Conv3d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else nn.Identity()
+    
+    def forward(self, x):
+        residual = self.residual(x)
+        
+        out = self.norm1(x)
+        out = self.lrelu1(out)
+        out = self.conv1(out)
+        out = self.dropout(out)
+        out = self.norm2(out)
+        out = self.lrelu2(out)
+        out = self.conv2(out)
+        
+        return out + residual
+
+
+class LocalizationModule(nn.Module):
+    """3x3x3 conv followed by 1x1x1 conv"""
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.norm = nn.InstanceNorm3d(out_channels)
+        self.lrelu = nn.LeakyReLU(0.01, inplace=True)
+        self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=1)
+    
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.norm(out)
+        out = self.lrelu(out)
+        out = self.conv2(out)
+        return out
+
+
+class Improved3DUNet(nn.Module):
+    """
+    Improved 3D UNet with deep supervision.
+
+    Improved 3D UNet architecture from: 
+    F. Isensee, P. Kickingereder, W. Wick, M. Bendszus, and K. H. Maier-Hein, “Brain Tumor 
+    Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge,” 
+    Feb. 2018. [Online]. Available: https://arxiv.org/abs/1802.10508v1. 
+    
+    Args:
+        in_channels: Number of input channels (default: 1)
+        num_classes: Number of output classes (default: 1)
+        base_filters: Base number of filters (default: 16)
+        dropout_p: Dropout probability (default: 0.3)
+    """
+    def __init__(self, in_channels=1, num_classes=1, base_filters=16, dropout_p=0.3):
+        super().__init__()
+        f = base_filters
+        
+        # Context pathway (encoder)
+        self.initial_conv = nn.Conv3d(in_channels, f, kernel_size=3, padding=1)
+        self.context1 = ContextModule(f, f, dropout_p)
+
+        self.down1 = nn.Conv3d(f, f, kernel_size=3, stride=2, padding=1)
+        self.context2 = ContextModule(f, f * 2, dropout_p)
+
+        self.down2 = nn.Conv3d(f * 2, f * 2, kernel_size=3, stride=2, padding=1)
+        self.context3 = ContextModule(f * 2, f * 4, dropout_p)
+
+        self.down3 = nn.Conv3d(f * 4, f * 4, kernel_size=3, stride=2, padding=1)
+        self.context4 = ContextModule(f * 4, f * 8, dropout_p)
+
+        self.down4 = nn.Conv3d(f * 8, f * 8, kernel_size=3, stride=2, padding=1)
+        self.context5 = ContextModule(f * 8, f * 16, dropout_p)
+        
+        # Localization pathway (decoder)
+        self.up4 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv3d(f * 16, f * 8, kernel_size=3, padding=1)
+        )
+        self.loc4 = LocalizationModule(f * 16, f * 8)
+        self.seg4 = nn.Conv3d(f * 8, num_classes, kernel_size=1)
+        
+        self.up3 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv3d(f * 8, f * 4, kernel_size=3, padding=1)
+        )
+        self.loc3 = LocalizationModule(f * 8, f * 4)
+        self.seg3 = nn.Conv3d(f * 4, num_classes, kernel_size=1)
+        
+        self.up2 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv3d(f * 4, f * 2, kernel_size=3, padding=1)
+        )
+        self.loc2 = LocalizationModule(f * 4, f * 2)
+        self.seg2 = nn.Conv3d(f * 2, num_classes, kernel_size=1)
+        
+        self.up1 = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            nn.Conv3d(f * 2, f, kernel_size=3, padding=1)
+        )
+        self.loc1 = LocalizationModule(f * 2, f)
+        self.final = nn.Conv3d(f, num_classes, kernel_size=1)
+    
+    def forward(self, x):
+        # Context pathway (encoder)
+        c1 = self.context1(self.initial_conv(x))
+
+        d1 = self.down1(c1)
+        c2 = self.context2(d1)
+
+        d2 = self.down2(c2)
+        c3 = self.context3(d2)
+
+        d3 = self.down3(c3)
+        c4 = self.context4(d3)
+
+        d4 = self.down4(c4)
+        c5 = self.context5(d4)
+        
+        # Localization pathway (decoder) with deep supervision
+        u4 = self.up4(c5)
+        l4 = self.loc4(torch.cat([u4, c4], dim=1))
+        s4 = self.seg4(l4)
+        
+        u3 = self.up3(l4)
+        l3 = self.loc3(torch.cat([u3, c3], dim=1))
+        s3 = self.seg3(l3)
+        
+        u2 = self.up2(l3)
+        l2 = self.loc2(torch.cat([u2, c2], dim=1))
+        s2 = self.seg2(l2)
+        
+        u1 = self.up1(l2)
+        l1 = self.loc1(torch.cat([u1, c1], dim=1))
+        out = self.final(l1)
+        
+        # element-wise sum of all segmentation outputs
+        out = out + F.interpolate(s2, size=out.shape[2:], mode='trilinear', align_corners=False)
+        out = out + F.interpolate(s3, size=out.shape[2:], mode='trilinear', align_corners=False)
+        out = out + F.interpolate(s4, size=out.shape[2:], mode='trilinear', align_corners=False)
+        
+        return out
     
