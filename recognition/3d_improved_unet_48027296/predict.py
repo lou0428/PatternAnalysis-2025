@@ -17,11 +17,11 @@ def predict():
     print(f"Loaded {len(test_ds)} test samples")
 
     model = Improved3DUNet(in_channels=1, num_classes=1).cuda()
-    model.load_state_dict(torch.load("unet3d.pth"))
+    model.load_state_dict(torch.load("improved_unet3d.pth"))
     model.eval()
     print("Model loaded and set to eval mode")
 
-    os.makedirs("predictions_3d", exist_ok=True)
+    os.makedirs("predictions_3d_improved", exist_ok=True)
 
     total_dice = 0.0
 
