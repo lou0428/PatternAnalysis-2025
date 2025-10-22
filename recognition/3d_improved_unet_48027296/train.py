@@ -2,7 +2,7 @@ print("train.py script started")
 
 import torch
 from torch.utils.data import DataLoader
-from modules import ImprovedUNet3D
+from modules import Improved3DUNet
 from dataset import Prostate3DDataset, get_data_splits
 from utils import dice_score, plot_metrics
 import torch.nn as nn
@@ -10,7 +10,7 @@ import torch.optim as optim
 import os
 
 def train_model():
-    model = ImprovedUNet3D(in_channels=1, num_classes=1).cuda()
+    model = Improved3DUNet(in_channels=1, num_classes=1).cuda()
 
     # directories 
     image_dir = "/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
