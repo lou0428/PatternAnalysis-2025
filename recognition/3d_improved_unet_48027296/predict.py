@@ -53,9 +53,9 @@ def predict():
             plt.title("Prediction")
 
             plt.tight_layout()
-            plt.savefig(f"predictions_3d/sample_{i:03d}.png")
+            plt.savefig(f"predictions_3d_improved/sample_{i:03d}.png")
             plt.close()
-            print(f"Saved predictions_3d/sample_{i:03d}.png", flush=True)
+            print(f"Saved predictions_3d_improved/sample_{i:03d}.png", flush=True)
 
 if __name__ == "__main__":
     predict()
