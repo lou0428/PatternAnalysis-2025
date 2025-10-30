@@ -2,16 +2,20 @@
     File name: utils.py
     Author: Louisa Wu
     Date created: 13/10/2025
-    Date last modified: 23/10/2025
+    Date last modified: 31/10/2025
     Python Version: 3.9.23
+
     Description: 
+        Utility functions for training, evaluation and visualisation of the Improved 3D UNet model 
+        on the HipMRI Prostate dataset.
 """
 
 import torch
 import matplotlib.pyplot as plt
 
 def dice_score(pred, target, num_classes=6, eps=1e-6):
-    pred = torch.argmax(pred, dim=1)  # (B, D, H, W)
+    """ Computes the Dice similarity scores for multi-class segmentation """
+    pred = torch.argmax(pred, dim=1)  # convert probabilities to class indices 
     dice_scores = []
 
     for c in range(num_classes):
@@ -25,9 +29,8 @@ def dice_score(pred, target, num_classes=6, eps=1e-6):
     return dice_scores
 
 def plot_metrics(train_loss, val_loss, val_dice, val_dice_per_class):
-    import matplotlib.pyplot as plt
-
-    # Loss plot
+    """ Plots training and validation metrics, including loss curves and Dice scores """
+    # training and validation loss 
     plt.figure()
     plt.plot(train_loss, label='Train Loss')
     plt.plot(val_loss, label='Val Loss')
@@ -38,7 +41,7 @@ def plot_metrics(train_loss, val_loss, val_dice, val_dice_per_class):
     plt.savefig("loss_plot.png")
     plt.close()
 
-    # Mean Dice plot
+    # mean Dice score 
     plt.figure()
     plt.plot(val_dice, label='Mean Dice')
     plt.xlabel('Epoch')
@@ -48,7 +51,7 @@ def plot_metrics(train_loss, val_loss, val_dice, val_dice_per_class):
     plt.savefig("mean_dice_plot.png")
     plt.close()
 
-    # Per-class Dice plot
+    # Dice scores per class 
     plt.figure()
     for c in range(6):
         plt.plot(val_dice_per_class[c], label=f'Class {c}')

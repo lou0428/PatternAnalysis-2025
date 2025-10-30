@@ -2,9 +2,23 @@
     File name: modules.py
     Author: Louisa Wu
     Date created: 13/10/2025
-    Date last modified: 23/10/2025
+    Date last modified: 31/10/2025
     Python Version: 3.9.23
+
     Description: 
+        Defines the 2D UNet, 3D UNet, and Improved 3D UNet architectures for medical image 
+        segmentation tasks. The 2D and 3D models are based on the original UNet architectures 
+        by Ronneberger et al. (2015) and Çiçek et al. (2016), and the Improved 3D UNet incorporates 
+        deep supervision, residual context modules, and instance normalisation following Isensee 
+        et al. (2018).
+
+    References: 
+        - Ronneberger, O., Fischer, P., & Brox, T. (2015). U-Net: Convolutional 
+            Networks for Biomedical Image Segmentation. MICCAI 2015.
+        - Çiçek, O. et al. (2016). 3D U-Net: Learning Dense Volumetric Segmentation
+            from Sparse Annotation. MICCAI 2016.
+        - Isensee, F. et al. (2018). Brain Tumor Segmentation and Radiomics Survival
+            Prediction: Contribution to the BRATS 2017 Challenge.
 """
 
 import torch
@@ -15,7 +29,9 @@ import torch.nn.functional as F
 
 class UNet2D(nn.Module):
     """
-    2D UNet architecture from: 
+    Stadard 2D UNet for biomedical image segmentation.
+
+    Architecture from: 
     O. Ronneberger, P. Fischer, and T. Brox, “U-Net: Convolutional Networks for Biomedical Image 
     Segmentation,” in Medical Image Computing and Computer-Assisted Intervention - MICCAI 2015, 
     ser. Lecture Notes in Computer Science, N. Navab, J. Hornegger, W. M. Wells, and A. F. Frangi, 
@@ -24,6 +40,7 @@ class UNet2D(nn.Module):
     def __init__(self, in_channels=1, out_channels=1):
         super().__init__()
 
+        # define convolution block used in encoder and decoder 
         def conv_block(in_c, out_c):
             return nn.Sequential(
                 nn.Conv2d(in_c, out_c, kernel_size=3, padding=1),
@@ -32,7 +49,7 @@ class UNet2D(nn.Module):
                 nn.ReLU(inplace=True)
             )
         
-        # encoder 
+        # encoder path
         self.enc1 = conv_block(in_channels, 64)
         self.pool1 = nn.MaxPool2d(2)
         self.enc2 = conv_block(64, 128)
@@ -45,7 +62,7 @@ class UNet2D(nn.Module):
         # bottleneck 
         self.bottleneck = conv_block(512, 1024)
 
-        # decoder 
+        # decoder path
         self.up4 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
         self.dec4 = conv_block(1024, 512)
         self.up3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
@@ -55,7 +72,7 @@ class UNet2D(nn.Module):
         self.up1 = nn.ConvTranspose2d(128, 64, 2, stride=2)
         self.dec1 = conv_block(128, 64)
 
-        # final output layer
+        # final segmentation output layer
         self.final = nn.Conv2d(64, out_channels, kernel_size=1)
 
     def forward(self, x):
@@ -74,14 +91,17 @@ class UNet2D(nn.Module):
         d2 = self.dec2(torch.cat([self.up2(d3), e2], dim=1))
         d1 = self.dec1(torch.cat([self.up1(d2), e1], dim=1))
 
-        return torch.sigmoid(self.final(d1))
+        # final activation 
+        return torch.sigmoid(self.final(d1)) # sigmoid for binary segmentation 
     
 
 #### 3D UNet ####
 
 class UNet3D(nn.Module):
     """ 
-    3D UNet architecture from: 
+    3D UNet for volumetric segmentation 
+    
+    Architecture from: 
     O. Cicek, A. Abdulkadir, S. S. Lienkamp, T. Brox, and O. Ronneberger, “3D U-Net: Learning 
     Dense Volumetric Segmentation from Sparse Annotation,” in Medical Image Computing and Computer-
     Assisted Intervention - MICCAI 2016, ser. Lecture Notes in Computer Science, S. Ourselin, L. 
@@ -92,7 +112,7 @@ class UNet3D(nn.Module):
         super().__init__()
         features = init_features
 
-        # encoder 
+        # encoder path
         self.encoder1 = self._block(in_channels, features)
         self.pool1 = nn.MaxPool3d(2)
         self.encoder2 = self._block(features, features * 2)
@@ -105,7 +125,7 @@ class UNet3D(nn.Module):
         # bottleneck 
         self.bottleneck = self._block(features * 8, features * 16)
 
-        # decoder 
+        # decoder path
         self.up4 = nn.ConvTranspose3d(features * 16, features * 8, kernel_size=2, stride=2)
         self.decoder4 = self._block(features * 16, features * 8)
         self.up3 = nn.ConvTranspose3d(features * 8, features * 4, kernel_size=2, stride=2)
@@ -158,7 +178,10 @@ class UNet3D(nn.Module):
 #### Improved 3D UNet ####
 
 class ContextModule(nn.Module):
-    """Pre-activation residual block with dropout"""
+    """
+    Pre-activation residual block with dropout.
+    Used in the encoder to improve feature learning and regularisation. 
+    """
     def __init__(self, in_channels, out_channels, dropout_p=0.3):
         super().__init__()
         self.norm1 = nn.InstanceNorm3d(in_channels)
@@ -171,7 +194,7 @@ class ContextModule(nn.Module):
         self.lrelu2 = nn.LeakyReLU(0.01, inplace=True)
         self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3, padding=1)
         
-        # Residual connection (1x1 conv if channels change)
+        # Residual connection (1x1 conv if channel sizes differ)
         self.residual = nn.Conv3d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else nn.Identity()
     
     def forward(self, x):
@@ -189,7 +212,10 @@ class ContextModule(nn.Module):
 
 
 class LocalizationModule(nn.Module):
-    """3x3x3 conv followed by 1x1x1 conv"""
+    """
+    3x3x3 convolution followed by 1x1x1 convolution.
+    Used in the decoder to refine features before upsampling. 
+    """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
@@ -209,16 +235,13 @@ class Improved3DUNet(nn.Module):
     """
     Improved 3D UNet with deep supervision.
 
-    Improved 3D UNet architecture from: 
+    Architecture from: 
     F. Isensee, P. Kickingereder, W. Wick, M. Bendszus, and K. H. Maier-Hein, “Brain Tumor 
     Segmentation and Radiomics Survival Prediction: Contribution to the BRATS 2017 Challenge,” 
     Feb. 2018. [Online]. Available: https://arxiv.org/abs/1802.10508v1. 
     
-    Args:
-        in_channels: Number of input channels (default: 1)
-        num_classes: Number of output classes (default: 6)
-        base_filters: Base number of filters (default: 16)
-        dropout_p: Dropout probability (default: 0.3)
+    Incoporates residual context modules in the encoder, instance normalisation and dropout, deep 
+    supervision and nearest-neighbour upsampling in the decoder. 
     """
     def __init__(self, in_channels=1, num_classes=6, base_filters=16, dropout_p=0.3):
         super().__init__()
@@ -270,7 +293,7 @@ class Improved3DUNet(nn.Module):
         self.final = nn.Conv3d(f, num_classes, kernel_size=1)
     
     def forward(self, x):
-        # Context pathway (encoder)
+        # encoder
         c1 = self.context1(self.initial_conv(x))
 
         d1 = self.down1(c1)
@@ -285,7 +308,7 @@ class Improved3DUNet(nn.Module):
         d4 = self.down4(c4)
         c5 = self.context5(d4)
         
-        # Localization pathway (decoder) with deep supervision
+        # decoder with deep supervision
         u4 = self.up4(c5)
         l4 = self.loc4(torch.cat([u4, c4], dim=1))
         s4 = self.seg4(l4)
@@ -302,7 +325,7 @@ class Improved3DUNet(nn.Module):
         l1 = self.loc1(torch.cat([u1, c1], dim=1))
         out = self.final(l1)
         
-        # element-wise sum of all segmentation outputs
+        # element-wise sum of all segmentation outputs (combine intermediate segmentation outputs)
         out = out + F.interpolate(s2, size=out.shape[2:], mode='trilinear', align_corners=False)
         out = out + F.interpolate(s3, size=out.shape[2:], mode='trilinear', align_corners=False)
         out = out + F.interpolate(s4, size=out.shape[2:], mode='trilinear', align_corners=False)
