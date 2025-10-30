@@ -1,4 +1,11 @@
-print("train.py script started")
+"""
+    File name: train.py
+    Author: Louisa Wu
+    Date created: 13/10/2025
+    Date last modified: 23/10/2025
+    Python Version: 3.9.23
+    Description: 
+"""
 
 import torch
 from torch.utils.data import DataLoader
@@ -10,7 +17,7 @@ import torch.optim as optim
 import os
 
 def train_model():
-    model = Improved3DUNet(in_channels=1, num_classes=1).cuda()
+    model = Improved3DUNet(in_channels=1, num_classes=6).cuda()
 
     # directories 
     image_dir = "/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
@@ -24,13 +31,16 @@ def train_model():
     train_loader = DataLoader(train_ds, batch_size=1, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=1)
 
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     train_loss, val_dice = [], []
 
     print("Starting training...")
     print(f"Training on {len(train_loader)} batches")
+
+    train_loss, val_loss, val_dice = [], [], []
+    val_dice_per_class = [[] for _ in range(6)]
 
     for epoch in range(20):
         model.train()
@@ -48,17 +58,28 @@ def train_model():
 
         # validation 
         model.eval()
-        dice_total = 0
+        val_epoch_loss = 0
+        dice_totals = [0.0] * 6
+
         with torch.no_grad():
             for x, y in val_loader:
                 x, y = x.cuda(), y.cuda()
-                pred = torch.sigmoid(model(x)) # convert logits to probabilities
-                dice_total += dice_score(pred, y)
-        val_dice.append(dice_total / len(val_loader))
-        print(f"Epoch {epoch+1}: Loss={train_loss[-1]:.4f}, Dice={val_dice[-1]:.4f}")
+                pred = model(x)
+                loss = criterion(pred, y)
+                val_epoch_loss += loss.item()
+
+                dice_scores = dice_score(pred, y)
+                for c in range(6):
+                    dice_totals[c] += dice_scores[c]
+
+        val_loss.append(val_epoch_loss / len(val_loader))
+        val_dice.append(sum(dice_totals) / 6 / len(val_loader))
+        for c in range(6):
+            val_dice_per_class[c].append(dice_totals[c] / len(val_loader))
+        print(f"Epoch {epoch+1}: Loss={train_loss[-1]:.4f}, Dice={val_dice[-1]:.4f}") # mean dice score across all 6 classes 
 
     torch.save(model.state_dict(), "improved_unet3d.pth")
-    plot_metrics(train_loss, val_dice)
+    plot_metrics(train_loss, val_loss, val_dice, val_dice_per_class)
 
 if __name__ == "__main__":
     train_model()

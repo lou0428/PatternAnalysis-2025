@@ -1,28 +1,60 @@
 """
-utils.py
-
-Dice and Plotting
+    File name: utils.py
+    Author: Louisa Wu
+    Date created: 13/10/2025
+    Date last modified: 23/10/2025
+    Python Version: 3.9.23
+    Description: 
 """
 
 import torch
 import matplotlib.pyplot as plt
 
-def dice_score(pred, target, eps=1e-6):
-    pred = (pred > 0.5).float()
-    intersection = (pred * target).sum()
-    return (2. * intersection) / (pred.sum() + target.sum() + eps)
+def dice_score(pred, target, num_classes=6, eps=1e-6):
+    pred = torch.argmax(pred, dim=1)  # (B, D, H, W)
+    dice_scores = []
 
-def plot_metrics(losses, dices):
-    # Convert tensors to CPU and NumPy
-    losses = [l.item() if torch.is_tensor(l) else l for l in losses]
-    dices = [d.item() if torch.is_tensor(d) else d for d in dices]
+    for c in range(num_classes):
+        pred_c = (pred == c).float()
+        target_c = (target == c).float()
+        intersection = (pred_c * target_c).sum()
+        union = pred_c.sum() + target_c.sum()
+        dice = (2. * intersection + eps) / (union + eps)
+        dice_scores.append(dice.item())
 
+    return dice_scores
+
+def plot_metrics(train_loss, val_loss, val_dice, val_dice_per_class):
+    import matplotlib.pyplot as plt
+
+    # Loss plot
     plt.figure()
-    plt.plot(losses, label='Loss')
-    plt.plot(dices, label='Dice')
+    plt.plot(train_loss, label='Train Loss')
+    plt.plot(val_loss, label='Val Loss')
     plt.xlabel('Epoch')
-    plt.ylabel('Metric')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
     plt.legend()
-    plt.title('Training Metrics')
-    plt.savefig("metrics.png")
+    plt.savefig("loss_plot.png")
+    plt.close()
+
+    # Mean Dice plot
+    plt.figure()
+    plt.plot(val_dice, label='Mean Dice')
+    plt.xlabel('Epoch')
+    plt.ylabel('Dice Score')
+    plt.title('Validation Mean Dice')
+    plt.legend()
+    plt.savefig("mean_dice_plot.png")
+    plt.close()
+
+    # Per-class Dice plot
+    plt.figure()
+    for c in range(6):
+        plt.plot(val_dice_per_class[c], label=f'Class {c}')
+    plt.xlabel('Epoch')
+    plt.ylabel('Dice Score')
+    plt.title('Per-Class Dice Scores')
+    plt.legend()
+    plt.savefig("per_class_dice_plot.png")
     plt.close()

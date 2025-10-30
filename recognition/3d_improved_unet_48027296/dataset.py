@@ -1,3 +1,12 @@
+"""
+    File name: datasets.py
+    Author: Louisa Wu
+    Date created: 13/10/2025
+    Date last modified: 23/10/2025
+    Python Version: 3.9.23
+    Description: 
+"""
+
 import numpy as np
 import nibabel as nib
 import torch
@@ -82,12 +91,12 @@ class Prostate3DDataset(Dataset):
         img = nib.load(self.image_paths[idx]).get_fdata()
         lbl = nib.load(self.label_paths[idx]).get_fdata()
 
-        # Normalize image and threshold label
+        # Normalize image
         img = (img - np.mean(img)) / (np.std(img) + 1e-8)
-        lbl = (lbl > 0).astype(np.float32)
 
+        # Convert to torch tensors
         img = torch.tensor(img, dtype=torch.float32).unsqueeze(0)  # (1, D, H, W)
-        lbl = torch.tensor(lbl, dtype=torch.float32).unsqueeze(0)
+        lbl = torch.tensor(lbl, dtype=torch.long)  # (D, H, W)
 
         if self.transform:
             img, lbl = self.transform(img, lbl)

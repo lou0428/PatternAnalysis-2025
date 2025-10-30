@@ -1,7 +1,15 @@
+"""
+    File name: modules.py
+    Author: Louisa Wu
+    Date created: 13/10/2025
+    Date last modified: 23/10/2025
+    Python Version: 3.9.23
+    Description: 
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 
 #### 2D UNet ####
 
@@ -208,11 +216,11 @@ class Improved3DUNet(nn.Module):
     
     Args:
         in_channels: Number of input channels (default: 1)
-        num_classes: Number of output classes (default: 1)
+        num_classes: Number of output classes (default: 6)
         base_filters: Base number of filters (default: 16)
         dropout_p: Dropout probability (default: 0.3)
     """
-    def __init__(self, in_channels=1, num_classes=1, base_filters=16, dropout_p=0.3):
+    def __init__(self, in_channels=1, num_classes=6, base_filters=16, dropout_p=0.3):
         super().__init__()
         f = base_filters
         
